@@ -13,6 +13,7 @@ from _thread import *
 import socket
 
 SECONDARY_ERROR_CODE = "Secondary server response"
+INITIALIZE_WAIT_TIME = 10
 
 import chat_pb2
 import chat_pb2_grpc
@@ -459,7 +460,7 @@ class ServerInterface:
         init_thread.start()
         
         # add delay to initialize the server-side logic on all processes
-        time.sleep(3)
+        time.sleep(INITIALIZE_WAIT_TIME)
         
         # extensible to multiple producers
         for i in range(len(INTERNAL_SERVER_ADDRS)):

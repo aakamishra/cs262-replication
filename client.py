@@ -6,6 +6,7 @@ import concurrent.futures
 import time
 from tkinter import *
 from tkinter import simpledialog
+from collections.abc import Iterable
 
 import grpc
 
@@ -13,7 +14,7 @@ import chat_pb2
 import chat_pb2_grpc
 
 ADDRESSES = ["localhost", "localhost", "localhost"]  # "10.250.240.43"
-PORTS = [50050, 50051, 50052]
+PORTS = [50051, 50052, 50053]
 MAX_CHAR_COUNT = 280
 SECONDARY_ERROR_CODE = "Secondary server response"
 
@@ -57,10 +58,13 @@ class ClientStub:
             futures = [executor.submit(try_except_RPC_error(getattr(self.stubs[i], request_name)), msg) \
                        for i in range(self.num_servers)]  
             results = [f.result() for f in futures]
+
         resp = None
         for result in results:
+            if request_name == "DeliverMessages":
+                return results
             # result will be None in the case a gRPC request to an individuul server timeouts
-            if result is None or result.error_code == SECONDARY_ERROR_CODE:
+            elif result is None or result.error_code == SECONDARY_ERROR_CODE:
                 continue
             elif resp is not None:
                 raise Exception("Two servers believe they are the primary!")
@@ -166,9 +170,12 @@ class ClientApplication:
 
             if event.is_set():
                 break
-            for msg in self.client_stub.DeliverMessages(auth_msg_request):
-                self.messages.insert(END, msg.message + '\n')
-
+            for server_iterator in self.client_stub.DeliverMessages(auth_msg_request):
+                if isinstance(server_iterator, Iterable):
+                    for msg in server_iterator:
+                        self.messages.insert(END, msg.message + '\n')
+                else:
+                    print("Received non-iterable from secondary")
                 
             time.sleep(0.5)
 
