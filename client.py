@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import logging
 import threading as mp
+import concurrent.futures
 import time
 from tkinter import *
 from tkinter import simpledialog
@@ -10,26 +11,76 @@ import grpc
 
 import chat_pb2
 import chat_pb2_grpc
-import wire_protocol as wp
 
-ADDRESS = "localhost"  # "10.250.240.43"
-PORT = 50051
+ADDRESSES = ["localhost", "localhost", "localhost"]  # "10.250.240.43"
+PORTS = [50050, 50051, 50052]
 MAX_CHAR_COUNT = 280
+SECONDARY_ERROR_CODE = "Secondary server response"
 
+def try_except_RPC_error(func):
+    def try_func(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except grpc.RpcError:
+            return None
+    return try_func
+
+class ClientStub:
+    def __init__(self,
+                 addresses,
+                 ports
+                 ):
+        assert len(addresses) == len(ports)
+        self.num_servers = len(addresses)
+        self.addresses = addresses
+        self.ports = ports
+        self.channels = [grpc.insecure_channel(f"{address}:{port}") for \
+                         address, port in zip(self.addresses, self.ports)]
+        self.stubs = [chat_pb2_grpc.ChatServerStub(channel) for channel in self.channels]
+        self.request_names = [
+            "CreateAccount",
+            "Login",
+            "ListAccounts",
+            "SendMessage",
+            "DeleteAccount",
+            "DeliverMessages"
+        ]
+
+        # This assigns self.CreateAccount, self.Login, self.ListAccounts, etc
+        for req_name in self.request_names:
+            def func(req_name):
+                return lambda msg: self.SendRequest(req_name, msg)
+            setattr(self, req_name, func(req_name))
+
+    def SendRequest(self, request_name, msg):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [executor.submit(try_except_RPC_error(getattr(self.stubs[i], request_name)), msg) \
+                       for i in range(self.num_servers)]  
+            results = [f.result() for f in futures]
+        resp = None
+        for result in results:
+            # result will be None in the case a gRPC request to an individuul server timeouts
+            if result is None or result.error_code == SECONDARY_ERROR_CODE:
+                continue
+            elif resp is not None:
+                raise Exception("Two servers believe they are the primary!")
+            else:
+                resp = result
+        if resp is None:
+            raise Exception("No servers believe they are the primary!")
+        return resp
 
 class ClientApplication:
     def __init__(self,
-                 use_grpc,  # If True, use grpc, if False, use sockets
                  username,
                  password,
                  fullname,
-                 address,
-                 port,
+                 addresses,
+                 ports,
                  application_window,
                  token=None,
                  account_status="yes"):
 
-        self.use_grpc = use_grpc
         # save user metadata
         self.username = username
         self.password = password
@@ -40,19 +91,13 @@ class ClientApplication:
         self.messages = []
 
         # save server address
-        self.address = address
-        self.port = port
+        self.addresses = addresses
+        self.ports = ports
         self.listen_loop = None
         
-        # create channel
-        if self.use_grpc:
-            self.channel = grpc.insecure_channel(f"{self.address}:{self.port}")
-            self.client_stub = chat_pb2_grpc.ChatServerStub(self.channel)
-            self.message_creator = chat_pb2
-        else:
-            self.message_creator = wp.encode
-            self.client_stub = wp.client_stub.ChatServerStub(
-                self.address, self.port)
+        # create client stub
+        self.client_stub = ClientStub(self.addresses, self.ports)
+        self.message_creator = chat_pb2
 
         # get token if there is none
         self.token = token
@@ -107,7 +152,6 @@ class ClientApplication:
     def ListenLoop(self, event) -> None:
         """
         Listens for new messages intended for the client's user.
-        If `use_grpc` is True, it listens for new messages using gRPC.
         Otherwise, it continuously sends a `RefreshRequest` message to the
         chat server and waits for a `RefreshReply` message.
         If a new message is received, it is added to the `messages`
@@ -122,13 +166,9 @@ class ClientApplication:
 
             if event.is_set():
                 break
-            if self.use_grpc:
-                for msg in self.client_stub.DeliverMessages(auth_msg_request):
-                    self.messages.insert(END, msg.message + '\n')
-            else:
-                msg = self.client_stub.DeliverMessages(auth_msg_request)
-                if not msg.error_code:
-                    self.messages.insert(END, msg.message + '\n')
+            for msg in self.client_stub.DeliverMessages(auth_msg_request):
+                self.messages.insert(END, msg.message + '\n')
+
                 
             time.sleep(0.5)
 
@@ -269,12 +309,6 @@ def Run() -> None:
     Returns:
         None
     """
-    use_grpc = None
-    while not (use_grpc == "y" or use_grpc == "n"):
-        use_grpc = input("Use grpc? (y/n): ")
-    use_grpc = (use_grpc == "y")
-    print(f"use_grpc: {use_grpc}")
-
     root = Tk()
     root.tk_setPalette(background='LightBlue', foreground='black', activeBackground='black', activeForeground='LightBlue3')
     
@@ -301,13 +335,12 @@ def Run() -> None:
     root.deiconify()
 
     app = ClientApplication(
-        use_grpc=use_grpc,
         username=username,
         password=password,
         fullname=fullname,
         account_status=account_status,
-        address=ADDRESS,
-        port=PORT,
+        addresses=ADDRESSES,
+        ports=PORTS,
         application_window=frame)
 
     app.Start()
