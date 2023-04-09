@@ -3,18 +3,33 @@ import datetime
 import logging
 import os
 import re
-import threading as mp
+import threading as th
+import multiprocessing as mp
 from collections import defaultdict
 from concurrent import futures
 import time 
 import grpc
+from _thread import *
+import socket
+
+SECONDARY_ERROR_CODE = "Secondary server response"
 
 import chat_pb2
 import chat_pb2_grpc
 
+from enum import Enum
+import argparse
+
+EXTERNAL_SERVER_ADDRS = [('localhost', '50051'), ('localhost', '50052'), ('localhost', '50053')]
+INTERNAL_SERVER_ADDRS = [('localhost', '50054'), ('localhost', '50055'), ('localhost', '50056')]
+
+
+class ServerState(Enum):
+    PRIMARY = 1
+    SECONDARY = 2
 
 class ChatServer(chat_pb2_grpc.ChatServerServicer):
-    def __init__(self) -> None:
+    def __init__(self, position) -> None:
         super().__init__()
         self.user_inbox = defaultdict(lambda: [])
 
@@ -23,6 +38,7 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         # per value entry (password, name)
         self.user_metadata_store = {}
         self.token_length = 15
+        self.server_state = position
 
         # token hub keys are usernames and the values are token, timestamp
         # pairs
@@ -32,10 +48,10 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         self.utc_time_gen = datetime.datetime
 
         # user metadata lock
-        self.metadata_lock = mp.Lock()
+        self.metadata_lock = th.Lock()
 
         # inbox lock
-        self.inbox_lock = mp.Lock()
+        self.inbox_lock = th.Lock()
 
     def ValidatePassword(self, password):
         """
@@ -75,7 +91,6 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
             int: Returns 0 if the token is valid and has not expired,
             or -1 if it is invalid or has expired.
         """
-
         with self.metadata_lock:
             if username not in self.token_hub.keys():
                 return -1
@@ -122,6 +137,8 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         If the recipient does not exist, the function returns a
         `MessageReply` object with an error code indicating an invalid recipient.
         """
+        if self.server_state == ServerState.SECONDARY:
+            return chat_pb2.MessageReply(version=1, error_code=SECONDARY_ERROR_CODE)
         token = request.auth_token
         username = request.username
         recipient = request.recipient_username
@@ -180,6 +197,9 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         # every client will end up running this
         token = request.auth_token
         username = request.username
+        if self.server_state == ServerState.SECONDARY:
+            return chat_pb2.RefreshReply(version=1, error_code=SECONDARY_ERROR_CODE)
+        
         if self.ValidateToken(username=username,
                                 token=token) < 0:
             return chat_pb2.RefreshReply(version=1,
@@ -218,7 +238,8 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         """
         # get the given username and do basic error checking
         username = request.username
-
+        if self.server_state == ServerState.SECONDARY:
+            return chat_pb2.LoginReply(error_code=SECONDARY_ERROR_CODE, auth_token="", fullname="")
         with self.metadata_lock:
             if username not in self.user_metadata_store.keys():
                 return chat_pb2.LoginReply(
@@ -260,7 +281,12 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         """
         # get the given username and do basic error checking
         username = request.username
-
+        if self.server_state == ServerState.SECONDARY:
+            return chat_pb2.AccountCreateReply(
+                    version=1,
+                    error_code=SECONDARY_ERROR_CODE,
+                    auth_token="",
+                    fullname="")
         with self.metadata_lock:
             if username in self.user_metadata_store.keys():
                 return chat_pb2.AccountCreateReply(
@@ -308,6 +334,10 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         """
         token = request.auth_token
         username = request.username
+        if self.server_state == ServerState.SECONDARY:
+            return chat_pb2.ListAccountReply(version=1,
+                                             error_code=SECONDARY_ERROR_CODE,
+                                             account_names="")
         if self.ValidateToken(username=username,
                               token=token) < 0:
             return chat_pb2.ListAccountReply(version=1,
@@ -349,6 +379,9 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
             The message contains a version number, an error code (if any),
             and an empty string as a payload.
         """
+        if self.server_state == ServerState.SECONDARY:
+            return chat_pb2.DeleteAccountReply(version=1,
+                                               error_code=SECONDARY_ERROR_CODE)
         token = request.auth_token
         username = request.username
         if self.ValidateToken(username=username,
@@ -364,18 +397,123 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
                 self.user_inbox.pop(username)
                 return chat_pb2.DeleteAccountReply(version=1,
                                                    error_code="")
+         
+class ServerInterface:
+    def __init__(self, servicer_object: ChatServer, port: str):
+        self.servicer_object = servicer_object
+        self.port = port 
+        self.sockets_dict = {}
+      
+    def init_listening_interface(self) -> None:
+        """
+        Creates a new machine thread that monitors 
+        and accepts new client connections and hands
+        them off to a newly created consumer thread.
+        
+        Args:
+            None
+        
+        Returns:
+            None
+        """
+        print(f"setting up listening interface for port {self.port}")
+        # create the socket port for listening
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        # bind to the port number
+        s.bind(('localhost', int(self.port)))
+        
+        # start listening on port
+        s.listen()
+
+        for _ in range(2):
+            conn, addr = s.accept()
+            start_new_thread(self.consumer, (conn,))
+    
+    def consumer(self, conn) -> None:
+        """
+        Consumes data from a network connection and adds it to a queue.
+
+        Args:
+            conn (socket.socket): The network connection to consume data from.
+
+        Returns:
+            None
+
+        """
+        # Record the start time so we know when to stop consuming.
+        while True:     
+            # Receive data from the connection.
+            data = conn.recv(1024)
+
+            # Split the received data into ID and value.
+            data_value = data.decode('ascii')
+            print(f"[{self.port}] <-", data_value)
+                   
+    def inter_server_communication_thread(self):
+        print("starting intercomms - checking internal state")
+        print("Current Position State: ", self.servicer_object.server_state)
+        
+        print("Starting listening interface")
+        init_thread = th.Thread(target=self.init_listening_interface)
+        init_thread.start()
+        
+        # add delay to initialize the server-side logic on all processes
+        time.sleep(3)
+        
+        # extensible to multiple producers
+        for i in range(len(INTERNAL_SERVER_ADDRS)):
+            host, port = INTERNAL_SERVER_ADDRS[i]
+            if port != self.port:
+                s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                self.sockets_dict[port] = s
+                try:
+                    s.connect((host, int(port)))
+                except Exception as e:
+                    print(e)
+    
+        while True:
+            time.sleep(1)
+            for port in self.sockets_dict.keys():
+                s = self.sockets_dict[port]
+                msg = f"{self.port},{self.servicer_object.server_state}"
+                try:
+                    s.send(msg.encode('ascii'))
+                except BrokenPipeError:
+                    pass
+    
 
 
-def serve():
-    port = '50051'
+def serve(position, external_port, internal_port, timeout=None):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    chat_pb2_grpc.add_ChatServerServicer_to_server(ChatServer(), server)
-    server.add_insecure_port('[::]:' + port)
+    servicer_object = ChatServer(position=position)
+    chat_pb2_grpc.add_ChatServerServicer_to_server(servicer_object, server)
+    server.add_insecure_port('[::]:' + external_port)
+    interface = ServerInterface(servicer_object=servicer_object, port=internal_port)
+    interface_thread = th.Thread(target=interface.inter_server_communication_thread)
     server.start()
-    print("Server started, listening on " + port)
+    interface_thread.start()    
+    
+    print("Server started, listening on " + internal_port)
     server.wait_for_termination()
 
 
 if __name__ == '__main__':
     logging.basicConfig()
-    serve()
+    parser = argparse.ArgumentParser(
+                prog='gRPC-Python-Server',
+                description='Spins a gRPC Chat server replica',
+                epilog='Please see documentation for further help.')
+    
+    parser.add_argument('position', default=ServerState.SECONDARY , help='primary-secondary position')
+    parser.add_argument('external_port', default='5051', help='port value')
+    parser.add_argument('internal_port', default='5054', help='port value')
+    parser.add_argument('--timeout', default=None, help="option that determines the number of seconds till death")
+    args = parser.parse_args()
+    if args.position == 'p':
+        position = ServerState.PRIMARY
+    else:
+        position = ServerState.SECONDARY
+        
+    print(args)
+    serve(position, args.external_port, args.internal_port, args.timeout)
