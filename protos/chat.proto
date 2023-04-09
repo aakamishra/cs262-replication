@@ -102,6 +102,18 @@ message DeleteAccountReply {
   string error_code = 2;
 }
 
+message ServerElectionBallot {
+  int32 version = 1;
+  int32 random_value = 2;
+  int64 timestamp = 3;
+}
+
+message ServerStateBackupUpdate {
+  int32 version = 1;
+  string token_hub = 2;
+  string metadata_store = 3;
+  string inbox = 4;
+}
 
 
 

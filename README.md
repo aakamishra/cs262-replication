@@ -93,6 +93,12 @@ After you delete the account, all other actions will be void because the client 
 
 Close the window and open a new one! Have fun!
 
+### New README
+
+```
+python grpc_server.py p 50051 50054 & python grpc_server.py s 50052 50055 & python grpc_server.py s 50053 50056
+```
+
 
 
 
