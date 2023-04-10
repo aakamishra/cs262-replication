@@ -680,12 +680,12 @@ class ServerInterface:
 
                     # Check the metadata of each connected server to see if it
                     # has a primary server
-                    pos, t = self.replica_metadata[port]
-                    if self.servicer_object.utc_time_gen.now().timestamp() - t < ELECTION_CHECK_TIME:
-                        if pos == f"{ServerState.PRIMARY}":
-                            primary_found = True
+                    if port in self.replica_metadata.keys():
+                        pos, t = self.replica_metadata[port]
+                        if self.servicer_object.utc_time_gen.now().timestamp() - t < ELECTION_CHECK_TIME:
+                            if pos == f"{ServerState.PRIMARY}":
+                                primary_found = True
 
-                    self.replica_metadata[port]
                 print(self.replica_metadata, " primary found: ", primary_found)
 
                 # If no primary server is found after a certain number of
