@@ -41,7 +41,7 @@ class ServerState(Enum):
 
 
 class ChatServer(chat_pb2_grpc.ChatServerServicer):
-    def __init__(self, position) -> None:
+    def __init__(self, position, log_filename) -> None:
         super().__init__()
         self.user_inbox = defaultdict(lambda: [])
 
@@ -66,7 +66,7 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         self.inbox_lock = th.Lock()
 
         # where to store state in case of being primary
-        self.state_file = f"state_store_{input()}.txt"
+        self.state_file = f"state_store_{log_filename}.txt"
         self.state_save_time = None
 
         self.commit_log_path = "logs/commit_log.txt"
@@ -733,7 +733,7 @@ class ServerInterface:
         self.election_time = False
 
 
-def serve(position, external_port, internal_port, timeout=None):
+def serve(position, external_port, internal_port, log_file, timeout=None):
     """
     This function sets up a gRPC server and starts a thread for inter-server communication.
     The `position` parameter specifies the position of the server in the system (primary or secondary).
@@ -741,7 +741,7 @@ def serve(position, external_port, internal_port, timeout=None):
     The `internal_port` parameter specifies the port number that other instances of the server will use to communicate with this instance.
     """
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    servicer_object = ChatServer(position=position)
+    servicer_object = ChatServer(position=position, log_filename=log_file)
     chat_pb2_grpc.add_ChatServerServicer_to_server(servicer_object, server)
     server.add_insecure_port('[::]:' + external_port)
     interface = ServerInterface(
@@ -769,6 +769,8 @@ if __name__ == '__main__':
         help='primary-secondary position')
     parser.add_argument('external_port', default='5051', help='port value')
     parser.add_argument('internal_port', default='5054', help='port value')
+    parser.add_argument('log_file', default='temp1', help='storage file name')
+
     parser.add_argument(
         '--timeout',
         default=None,
@@ -780,4 +782,4 @@ if __name__ == '__main__':
         position = ServerState.SECONDARY
 
     print(args)
-    serve(position, args.external_port, args.internal_port, args.timeout)
+    serve(position, args.external_port, args.internal_port, args.log_file, args.timeout)
