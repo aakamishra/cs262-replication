@@ -579,7 +579,6 @@ class ServerInterface:
                 opcode = -1
 
             if opcode == 6:
-                # TODO: protect replica_metadata with a lock
                 result = wp.socket_types.ServerStatusUpdate(data)
                 if result is not None and result.port is not None:
                     self.replica_metadata[result.port] = (
