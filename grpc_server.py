@@ -757,7 +757,7 @@ class ServerInterface:
         else:
             self.servicer_object.server_state = ServerState.SECONDARY
         # label any broken ports
-        for port in self.sockets_dict.keys():
+        for port in self.replica_metadata.keys():
             if port != primary_winner and self.replica_metadata[
                     port][0] == f"{ServerState.PRIMARY}":
                 self.replica_metadata[port] = (f"{ServerState.BROKEN}", self.servicer_object.utc_time_gen.now().timestamp())
