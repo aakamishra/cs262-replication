@@ -59,6 +59,7 @@ class ClientStub:
                        for i in range(self.num_servers)]  
             results = [f.result() for f in futures]
 
+        print(results)
         resp = None
         for result in results:
             if request_name == "DeliverMessages":
@@ -172,8 +173,11 @@ class ClientApplication:
                 break
             for server_iterator in self.client_stub.DeliverMessages(auth_msg_request):
                 if isinstance(server_iterator, Iterable):
-                    for msg in server_iterator:
-                        self.messages.insert(END, msg.message + '\n')
+                    try:
+                        for msg in server_iterator:
+                            self.messages.insert(END, msg.message + '\n')
+                    except:
+                        pass
                 else:
                     print("Received non-iterable from secondary")
                 

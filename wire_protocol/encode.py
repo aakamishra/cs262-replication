@@ -57,3 +57,7 @@ def ServerElectionTrigger(version):
 def ServerElectionBallot(version, port, value):
     opcode = 8
     return f"{opcode}||{version}||{port}||{value}".encode("ascii")
+
+def ServerSendState(version, state):
+    opcode = 9
+    return f"{opcode}||{version}||{state}".encode("ascii")

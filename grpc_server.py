@@ -24,7 +24,7 @@ SECONDARY_ERROR_CODE = "Secondary server response"
 INITIALIZE_WAIT_TIME = 10
 REFRESH_TIME = 0.125
 ELECTION_CHECK_TIME = 2 * REFRESH_TIME
-ELECTION_ITERS = 50
+ELECTION_ITERS = 100
 
 
 EXTERNAL_SERVER_ADDRS = [('localhost', '50051'),
@@ -102,6 +102,10 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         state = text_file.read() # read whole file to a string
         text_file.close() # close file
         self.set_state(state)
+    
+    def update_state(self, state):
+        if self.state_save_time is None or self.get_state_time_created(state) > self.state_save_time:
+            self.set_state(state)
 
     def ValidatePassword(self, password):
         """
@@ -206,7 +210,8 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
                 return chat_pb2.MessageReply(version=1,
                                              error_code="Invalid Recipient")
             self.user_inbox[recipient].append(modified_string)
-            return chat_pb2.MessageReply(version=1, error_code="")
+        self.write_state()
+        return chat_pb2.MessageReply(version=1, error_code="")
 
     def CheckInboxLength(self, username: str) -> int:
         """
@@ -261,6 +266,7 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
             with self.inbox_lock:
                 msg = self.user_inbox[username].pop(0)
             # ended lock context before yield
+            self.write_state()
             yield chat_pb2.RefreshReply(version=1,
                                         error_code="",
                                         message=msg)
@@ -316,6 +322,7 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
 
             # register token in token hub
             self.token_hub[username] = (token, timestamp)
+            self.write_state()
             return chat_pb2.LoginReply(
                 version=1,
                 error_code="",
@@ -369,10 +376,11 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
             with self.inbox_lock:
                 # create user chat inbox
                 self.user_inbox[username] = []
-                return chat_pb2.AccountCreateReply(version=1,
-                                                   error_code="",
-                                                   auth_token=token,
-                                                   fullname=fullname)
+            self.write_state()
+            return chat_pb2.AccountCreateReply(version=1,
+                                                error_code="",
+                                                auth_token=token,
+                                                fullname=fullname)
 
     def ListAccounts(self, request, context) -> chat_pb2.ListAccountReply:
         """
@@ -450,8 +458,9 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
             self.user_metadata_store.pop(username)
             with self.inbox_lock:
                 self.user_inbox.pop(username)
-                return chat_pb2.DeleteAccountReply(version=1,
-                                                   error_code="")
+        self.write_state()
+        return chat_pb2.DeleteAccountReply(version=1,
+                                            error_code="")
 
 
 class ServerInterface:
@@ -549,6 +558,11 @@ class ServerInterface:
                 result = wp.socket_types.ServerElectionBallot(data)
                 self.ballot_box.append(
                     (result.port, result.value, self.servicer_object.utc_time_gen.now().timestamp()))
+            
+            elif opcode == 9:
+                result = wp.socket_types.ServerSendState(data)
+                # print(result.state)
+                self.servicer_object.update_state(result.state)
 
     def inter_server_communication_thread(self):
         """
@@ -598,8 +612,14 @@ class ServerInterface:
                     # connected server
                     msg = wp.encode.ServerStatusUpdate(
                         version=1, port=self.port, position=self.servicer_object.server_state)
+                    if self.servicer_object.server_state == ServerState.PRIMARY:
+                        state_msg = wp.encode.ServerSendState(version=1, state=self.servicer_object.get_state())
+                    else:
+                        state_msg = None
                     try:
                         s.send(msg)
+                        if self.servicer_object.server_state == ServerState.PRIMARY:
+                            s.send(state_msg)
                     except BrokenPipeError:
                         pass
 
@@ -679,7 +699,8 @@ class ServerInterface:
                 f"This Server is the new primary: {self.port}",
                 "state: ",
                 self.servicer_object.server_state)
-
+        else:
+            self.servicer_object.server_state = ServerState.SECONDARY
         # label any broken ports
         for port in self.sockets_dict.keys():
             if port != primary_winner and self.replica_metadata[

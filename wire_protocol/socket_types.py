@@ -166,3 +166,11 @@ class ServerElectionBallot(SocketMessage):
             "value": int,
         }
         super().__init__(fields, raw_bytes)
+
+class ServerSendState(SocketMessage):
+    def __init__(self, raw_bytes):
+        fields = {
+            "version": int,
+            "state": str,
+        }
+        super().__init__(fields, raw_bytes)
