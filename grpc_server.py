@@ -582,8 +582,9 @@ class ServerInterface:
 
             if opcode == 6:
                 result = wp.socket_types.ServerStatusUpdate(data)
-                self.replica_metadata[result.port] = (
-                    result.position, self.servicer_object.utc_time_gen.now().timestamp())
+                if result is not None and result.port is not None:
+                    self.replica_metadata[result.port] = (
+                        result.position, self.servicer_object.utc_time_gen.now().timestamp())
 
             elif opcode == 7:
                 result = wp.socket_types.ServerElectionTrigger(data)
