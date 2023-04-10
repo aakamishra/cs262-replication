@@ -1,6 +1,6 @@
 # cs262-wire-protocol: WiredIN
 
-## A Socket-Based and GRPC Based Simple Account-Managed Chat Server. 
+## A GRPC Based Simple Account-Managed Chat Server with Replication + 2-Fault Protection + Presistent State. 
 
 ## Installation Instructions
 

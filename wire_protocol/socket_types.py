@@ -141,3 +141,28 @@ class RefreshReply(SocketMessage):
             "error_code": str
         }
         super().__init__(fields, raw_bytes)
+        
+class ServerStatusUpdate(SocketMessage):
+    def __init__(self, raw_bytes):
+        fields = {
+            "version": int,
+            "port": str,
+            "position": str,
+        }
+        super().__init__(fields, raw_bytes)
+
+class ServerElectionTrigger(SocketMessage):
+    def __init__(self, raw_bytes):
+        fields = {
+            "version": int,
+        }
+        super().__init__(fields, raw_bytes)
+        
+class ServerElectionBallot(SocketMessage):
+    def __init__(self, raw_bytes):
+        fields = {
+            "version": int,
+            "port": str,
+            "value": int,
+        }
+        super().__init__(fields, raw_bytes)

@@ -1,3 +1,12 @@
+# Current Project Entries
+
+
+
+
+
+# Previous Project Entries
+
+
 ## Entry 2/9/2023 11:00 am
 
 Worked on looking at documentation of the the python GrPC protocol online and worked through the demo example provided regarding latitude and longitude coordinate transfer. 
