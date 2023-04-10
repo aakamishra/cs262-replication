@@ -45,3 +45,15 @@ def RefreshRequest(version, auth_token, username):
 def RefreshReply(version, message, error_code):
     opcode = 5
     return f"{opcode}||{version}||{message}||{error_code}".encode("ascii")
+
+def ServerStatusUpdate(version, port, position):
+    opcode = 6
+    return f"{opcode}||{version}||{port}||{position}".encode("ascii")
+
+def ServerElectionTrigger(version):
+    opcode = 7
+    return f"{opcode}||{version}".encode("ascii")
+
+def ServerElectionBallot(version, port, value):
+    opcode = 8
+    return f"{opcode}||{version}||{port}||{value}".encode("ascii")

@@ -8,7 +8,7 @@ For socket and gRPC unit tests, please run the following command:
 python unit_tests.py
 ```
 
-## Description of Unit Tests
+## Description of Chat Server Unit Tests
 
 The first function, `GenerateTokenTest()`, tests the token generation functionality of both chat servers by generating two tokens from each server and asserting that the two generated tokens are not the same.
 
@@ -27,12 +27,6 @@ The `ListAccounts` function is called twice: first using an instance of `gRPCCha
 The `DeleteAccount` function creates four accounts using `gRPCChatServer` and deletes the first account created. It checks if the account was deleted correctly and if an error code is returned when an invalid account is specified for deletion.
 
 ## (Bonus) Running Integration Tests
-
-For socket integration tests, please run the following command:
-
-```
-python sockets_integration_tests.py
-```
 
 For grpc integration tests, please run the following command:
 
