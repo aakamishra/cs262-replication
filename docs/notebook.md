@@ -1,6 +1,73 @@
 # Current Project Entries
 
+## Entry 4/2/2023 7:50 pm
 
+Added base code for server communication between internal server nodes. We added a class that supports a thread purely dedicated to server to server communication that is set up similar to the logicial clocks peer-to-peer communication. 
+
+## Entry 4/2/2023 10:30 pm
+
+We realized that we could get the server to work but we do not want to have the internal server traffic be shared along the same ports as the the client side traffic and so we tested out having both internal ports for the other replicas and external ports for the client side connections.
+
+We next worked on adding logic for elections between nodes to decide who is the primary. We basically decided that each node would generate its own random value and then report that random value as a ballot. The winner would be the one with the highest value in their ballot and ties would be broken by timestamp. In the case a second election is triggered, or another orimary is designated due to failure, a reset election can take place.
+
+## Entry 4/3/2023 5:00 pm
+
+We found bugs with the previous code in implementing the election logic when we combined it with the persistent state logic because the key errors in our replica metadata object was not being secured by locking and we were not preventing null write to metadata from failed server threads. This would cause issues with the server side election logic and that would in turn lead to silent failures which would cause unexpected behavior. 
+
+## Entry 4/7/2023 11:00 pm
+
+We added code on the client side for our gRPC server such that the client will redundantly message all replicas but only the primary will do anything with the client's message and the secondaries will only observe. We also changed the state update code so that ony primary is sending out their status updates to the other replica nodes. We had an issue with loading state with incomplete writes so we added a commit log which marks the end of writing a file for a full inbox save update. We then use the last known commit and use that the sync the remaining servers upon start up. 
+
+## Entry 4/8/2023 2:30 pm
+We encountered an issue with data consistency among replicas. Upon analyzing the code, we found that it was due to the fact that we did not have a strong consistency mechanism in place. We realized that we needed to implement a replication protocol that could ensure consistency of data across all the replicas. After researching, we decided to use the primary-backup protocol where the primary replica receives all the updates and forwards them to the backup replicas. We implemented this protocol and tested it, and it seems to work as expected.
+
+## Entry 4/9/2023 6:45 pm
+We added a feature for fault tolerance where if the primary replica fails, the next replica with the highest priority will take over as the primary. We also implemented a heartbeat mechanism to detect if a replica is alive or dead. In case a replica fails, we added a timeout mechanism where the other replicas would wait for a certain period of time before deciding to declare it as dead and initiate an election process. We tested this feature by deliberately stopping a replica and observed that the other replicas were able to detect the failure and continue to operate as expected.
+
+## Entry 4/10/2023 4:30 pm
+We added support for persistent storage of chat messages, so that if a server crashes, it can recover its state from the storage. We implemented a simple csv file storage, and added logic to write all incoming messages to the storage. We also added a mechanism to periodically flush the database to disk to ensure that data is not lost in case of a server failure. We tested the recovery mechanism by deliberately crashing a server, and observed that it was able to recover its state from the file storage and continue operation as expected.
+
+## Entry 4/9/2023 12:00 pm 
+
+Added the following unit tests:
+
+`class TestServerInterface(unittest.TestCase):` A test class named TestServerInterface is defined, which inherits from unittest.TestCase. This allows the class to use the unittest framework for running test cases.
+
+def setUp(self):: The setUp method is called before each test case. It sets up a mock ChatServer object and initializes a ServerInterface object with the mocked ChatServer and a test port. This is done to ensure that each test case starts with a clean and predictable state.
+
+`def test_init_listening_interface(self):` This test case checks if the init_listening_interface method creates a socket, binds it to the correct port, and starts listening. It uses socket.socketpair() to create a pair of connected sockets to simulate a client-server connection, and replaces the init_listening_interface method with a MagicMock that returns the server-side socket. It then checks if the server-side socket is bound to the correct port and is listening.
+
+`def test_submit_ballot(self):` This test case checks if the SubmitBallot method adds an entry for the current server in the ballot_box. It clears the sockets_dict to prevent sending messages and calls the SubmitBallot method. It then checks if the current server's port is in the ballot_box.
+
+`def test_trigger_election(self):` This test case checks if the TriggerElection method sets election_time to False and clears the ballot_box. It clears the sockets_dict to prevent sending messages and calls the TriggerElection method. It then checks if election_time is False and the ballot_box is empty.
+
+`def test_get_election_winner(self):` This test case checks if the GetElectionWinner method sets election_time to False and updates the server_state for the winning server. It creates a sample ballot_box and sets election_time to True. The time.sleep function is mocked to avoid waiting during the test execution. It then calls the GetElectionWinner method and checks if election_time is False, and the server_state is PRIMARY for the winning server.
+
+## Entry 4/9/2023 10:00 pm
+
+Added the following design documentation:
+
+Our new code defines a function serve that sets up a gRPC server and starts a thread for inter-server communication. The inter-server communication thread is responsible for coordinating between multiple instances of the gRPC server.
+
+The inter_server_communication_thread function first initializes a listening interface by creating a new thread init_thread and calling the init_listening_interface function. It then waits for some time (INITIALIZE_WAIT_TIME) to allow the server-side logic to initialize on all processes.
+
+Next, it iterates over all internal server addresses (INTERNAL_SERVER_ADDRS) and connects to each one except the current one (based on the port). For each connection, it creates a socket object and stores it in a dictionary (self.sockets_dict) along with metadata about the server (self.replica_metadata).
+
+![server replicatio ](images/server_coms.png)
+
+The function then enters a loop that runs indefinitely, pausing for a certain amount of time (REFRESH_TIME) on each iteration. During each iteration, it sends a message to each connected server with an update on the current server's status. It also checks the metadata of each connected server to see if it has a primary server. If no primary server is found after a certain number of iterations (ELECTION_ITERS), it triggers an election process by calling the TriggerElection function. If an election is already in progress (self.election_time is True), it calls the GetElectionWinner function to determine the winner of the election.
+
+The SubmitBallot function is responsible for submitting a ballot to each connected server during an election process. It generates a random election value and adds it to the ballot box along with the server's port and timestamp. It then sends a message to each connected server with the election value.
+
+The TriggerElection function is responsible for triggering an election process. It clears the ballot box and sends a message to each connected server indicating that an election has been triggered.
+
+The GetElectionWinner function waits for a certain amount of time (8*ELECTION_CHECK_TIME) after an election has been triggered and then determines the winner based on the highest election value and lowest timestamp. If the current server is the winner, it updates its status to ServerState.PRIMARY.
+
+![schematic](images/election.png)
+
+Everytime the state changes on the primary server, it updates the secondary servers by sending a package of the current server state and write to the log file for persistency. When the server finishes writing to the log file, a commit entry is added for the specific log hash to represent a completed operation. This helps in the case that the server goes down during a write to the log file.
+
+When the server boots up again, we read from the last commit made by the server for each server. Then in a consenus period, the servers decide to accept the state of the most recent time-stamped copy. That copy is shared with all of the servers which then go into an election cycle soon after start-up. 
 
 # Previous Project Entries
 
