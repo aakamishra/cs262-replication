@@ -68,16 +68,23 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         # where to store state in case of being primary
         self.state_file = f"state_store_{input()}.txt"
         self.state_save_time = None
+
+        self.commit_log_path = "logs/commit_log.txt"
+
+        if os.path.exists(self.state_file):
+            self.read_state_from_file()
     
     def get_state(self):
         # Returns state as a string that can be set by other servers
         self.state_save_time = time.time()
+        self.prev_commit_hash = hash(self.state_save_time)
         return json.dumps(
             {
              "time": self.state_save_time,
              "user_inbox": self.user_inbox,
              "user_metadata_store": self.user_metadata_store, 
-             "token_hub": self.token_hub
+             "token_hub": self.token_hub,
+             "commit_hash": self.prev_commit_hash
              })
 
     def get_state_time_created(self, state):
@@ -96,6 +103,10 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         text_file = open(self.state_file, "w")
         text_file.write(state)
         text_file.close()
+        
+        log_file = open(self.commit_log_path, "a")  # append mode
+        log_file.write(f"Commit Hash: {self.prev_commit_hash}, Time: {self.state_save_time} \n")
+        log_file.close()
     
     def read_state_from_file(self):
         text_file = open(self.state_file, "r") # open text file in read mode
@@ -595,6 +606,19 @@ class ServerInterface:
                     s.connect((host, int(port)))
                 except Exception as e:
                     print(e)
+
+        if self.servicer_object.state_save_time is not None:
+            state_msg = wp.encode.ServerSendState(version=1, state=self.servicer_object.get_state())
+        else:
+            state_msg = None
+        
+        for port in self.sockets_dict.keys():
+            if state_msg is not None:
+                try:
+                    s = self.sockets_dict[port]
+                    s.send(state_msg)
+                except:
+                    pass
 
         # Loop indefinitely
         while True:
