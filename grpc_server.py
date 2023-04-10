@@ -1,5 +1,6 @@
 import binascii
 import datetime
+import time
 import logging
 import os
 import re
@@ -8,6 +9,7 @@ import multiprocessing as mp
 from collections import defaultdict
 from concurrent import futures
 import time 
+import json
 import grpc
 from _thread import *
 import socket
@@ -53,6 +55,44 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
 
         # inbox lock
         self.inbox_lock = th.Lock()
+
+        # where to store state in case of being primary
+        self.state_file = f"state_store_{input()}.txt"
+        self.state_save_time = None
+    
+    def get_state(self):
+        # Returns state as a string that can be set by other servers
+        self.state_save_time = time.time()
+        return json.dumps(
+            {
+             "time": self.state_save_time,
+             "user_inbox": self.user_inbox,
+             "user_metadata_store": self.user_metadata_store, 
+             "token_hub": self.token_hub
+             })
+
+    def get_state_time_created(self, state):
+        return json.loads(state)["time"]
+    
+    def set_state(self, state):
+        # Accepts string and sets state
+        state = json.loads(state)
+        self.user_inbox = state["user_inbox"]
+        self.user_metadata_store = state["user_metadata_store"]
+        self.token_hub = state["token_hub"]
+        self.state_save_time = state["time"]
+    
+    def write_state(self):
+        state = self.get_state()
+        text_file = open(self.state_file, "w")
+        text_file.write(state)
+        text_file.close()
+    
+    def read_state_from_file(self):
+        text_file = open(self.state_file, "r") # open text file in read mode
+        state = text_file.read() # read whole file to a string
+        text_file.close() # close file
+        self.set_state(state)
 
     def ValidatePassword(self, password):
         """
