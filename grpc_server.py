@@ -581,10 +581,18 @@ class ServerInterface:
                 opcode = -1
 
             if opcode == 6:
+                # TODO: protect replica_metadata with a lock
                 result = wp.socket_types.ServerStatusUpdate(data)
                 if result is not None and result.port is not None:
                     self.replica_metadata[result.port] = (
                         result.position, self.servicer_object.utc_time_gen.now().timestamp())
+                    if self.servicer_object.server_state == ServerState.PRIMARY and result.position == f"{ServerState.PRIMARY}":
+                        print("Getting two primaries due to latency, triggering election!")
+                        self.election_time = True
+                        self.TriggerElection()
+                        self.ballot_box = []
+                        self.SubmitBallot()
+
 
             elif opcode == 7:
                 result = wp.socket_types.ServerElectionTrigger(data)
