@@ -66,7 +66,7 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         self.inbox_lock = th.Lock()
 
         # where to store state in case of being primary
-        self.state_file = f"state_store_{log_filename}.txt"
+        self.state_file = f"logs/state_store_{log_filename}.txt"
         self.state_save_time = None
 
         self.commit_log_path = "logs/commit_log.txt"
