@@ -99,7 +99,6 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
             tm = json.loads(state)["time"]
         except:
             tm = 0 
-            print("json loads is failing!")
             log_file = open(self.commit_log_path, "a")  # append mode
             log_file.write(f"Failing state: {state}\n")
             log_file.close()
@@ -116,7 +115,6 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
                     self.token_hub = state["token_hub"]
                     self.state_save_time = state["time"]
                 except:
-                    print('FAILED TO LOAD STATE')
                     log_file = open(self.commit_log_path, "a")  # append mode
                     log_file.write(f"Failing state: {state}\n")
                     log_file.close()

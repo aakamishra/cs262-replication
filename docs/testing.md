@@ -14,6 +14,16 @@ For socket and gRPC unit tests, please run the following command:
 python chat_server_unit_tests.py
 ```
 
+For server state tests, run:
+```
+python server_state_tests.py
+```
+
+For client stub tests, run:
+```
+python client_stub_tests.py
+```
+
 ## Description of 2-Fault / Persistent Unit Tests
 
 `class TestServerInterface(unittest.TestCase):` A test class named TestServerInterface is defined, which inherits from unittest.TestCase. This allows the class to use the unittest framework for running test cases.
@@ -63,6 +73,11 @@ This test verifies that the SendRequest function properly handles a scenario whe
 
 Test 4 (test_SendRequest_with_Multiple_Primaries):
 This test verifies that the SendRequest function properly handles a scenario where there are multiple primary gRPC servers (erroneous). The test creates two mocked server stubs, where both stubs always return a MockReply object with the error code "" when the CreateAccount method is called. A ClientStub instance is then created with these mocked server stubs, and the SendRequest method is called on the ClientStub instance with the CreateAccount method and a dictionary of parameters. The test verifies that an Exception is raised, with the expected error message of seeing multiple primaries.
+
+## Description of Server State Tests
+
+We wrote some simple unit tests to verify that the state was being set and gotten correctly for the state syncing procedure. See `server_state_tests.py` for these
+tests.
 
 ## (Bonus) Running Integration Tests
 
