@@ -2,13 +2,15 @@
 
 This document contains links to all of our relevant design documentation.
 
-## Server Communication and Consensus Shim
+## (1) Server Communication and Consensus Shim
 
 Our new code defines a function serve that sets up a gRPC server and starts a thread for inter-server communication. The inter-server communication thread is responsible for coordinating between multiple instances of the gRPC server.
 
 The inter_server_communication_thread function first initializes a listening interface by creating a new thread init_thread and calling the init_listening_interface function. It then waits for some time (INITIALIZE_WAIT_TIME) to allow the server-side logic to initialize on all processes.
 
 Next, it iterates over all internal server addresses (INTERNAL_SERVER_ADDRS) and connects to each one except the current one (based on the port). For each connection, it creates a socket object and stores it in a dictionary (self.sockets_dict) along with metadata about the server (self.replica_metadata).
+
+![server replicatio ](images/server_coms.png)
 
 The function then enters a loop that runs indefinitely, pausing for a certain amount of time (REFRESH_TIME) on each iteration. During each iteration, it sends a message to each connected server with an update on the current server's status. It also checks the metadata of each connected server to see if it has a primary server. If no primary server is found after a certain number of iterations (ELECTION_ITERS), it triggers an election process by calling the TriggerElection function. If an election is already in progress (self.election_time is True), it calls the GetElectionWinner function to determine the winner of the election.
 
@@ -18,7 +20,14 @@ The TriggerElection function is responsible for triggering an election process. 
 
 The GetElectionWinner function waits for a certain amount of time (8*ELECTION_CHECK_TIME) after an election has been triggered and then determines the winner based on the highest election value and lowest timestamp. If the current server is the winner, it updates its status to ServerState.PRIMARY.
 
-## (1) gRPC and Wire Protocol Message and Protocol Structure
+![schematic](images/election.png)
+
+Everytime the state changes on the primary server, it updates the secondary servers by sending a package of the current server state and write to the log file for persistency. When the server finishes writing to the log file, a commit entry is added for the specific log hash to represent a completed operation. This helps in the case that the server goes down during a write to the log file.
+
+When the server boots up again, we read from the last commit made by the server for each server. Then in a consenus period, the servers decide to accept the state of the most recent time-stamped copy. That copy is shared with all of the servers which then go into an election cycle soon after start-up. 
+
+
+## (2) gRPC and Wire Protocol Message and Protocol Structure
 
 ### Overview
 
@@ -26,7 +35,7 @@ This documentation describes the design of the wire protocol and gRPC implementa
 
 [Full Wire Protocol and gRPC Documentation Here](wire_design.md)
 
-## (2) Locking Structure and Hierarchy
+## (3) Locking Structure and Hierarchy
 
 ### Overview
 
@@ -34,7 +43,7 @@ The "Locking Overview" documentation outlines the access protection mechanism of
 
 [Full Locking Documentation Here](locking_design.md)
 
-## (3) Multi-threading Server / Client Structure
+## (4) Multi-threading Server / Client Structure
 
 ### Overview
 
@@ -42,11 +51,11 @@ For the gRPC setup, we have a global pool of threads that we can use to handle i
 
 [Full Design Schematic](schematic.md)
 
-## (4) Testing Framework
+## (5) Testing Framework
 
 ### Overview
 
-The code contains unit tests for chat server functionalities such as token generation, account creation, token verification, login, and message sending. The test suite also includes tests for account listing and deletion. Integration tests for concurrent message sending and receiving using multiple threads are also conducted. The integration tests check whether the application is able to create an account and login successfully, list the created account, send a message to another client application, and concurrently listen for incoming messages from other clients. If the integration tests pass, the function returns an integer value of 0, otherwise, an assertion error is raised, which stops the program.
+The code contains unit tests for chat server functionalities such as token generation, account creation, token verification, login, and message sending. The test suite also includes tests for account listing and deletion. Integration tests for concurrent message sending and receiving using multiple threads are also conducted. The integration tests check whether the application is able to create an account and login successfully, list the created account, send a message to another client application, and concurrently listen for incoming messages from other clients. If the integration tests pass, the function returns an integer value of 0, otherwise, an assertion error is raised, which stops the program. The server side communication tests for replication, double fault support functions and persistency. 
 
 [Full Testing Details](testing.md)
 

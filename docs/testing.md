@@ -2,11 +2,31 @@
 
 ## Running Unit Tests
 
+For unit test of the 2-Fault and Persisent helper functionality run the following command:
+
+```
+python server_communication_unit_tests.py
+```
+
 For socket and gRPC unit tests, please run the following command:
 
 ```
-python unit_tests.py
+python chat_server_unit_tests.py
 ```
+
+## Description of 2-Fault / Persistent Unit Tests
+
+`class TestServerInterface(unittest.TestCase):` A test class named TestServerInterface is defined, which inherits from unittest.TestCase. This allows the class to use the unittest framework for running test cases.
+
+def setUp(self):: The setUp method is called before each test case. It sets up a mock ChatServer object and initializes a ServerInterface object with the mocked ChatServer and a test port. This is done to ensure that each test case starts with a clean and predictable state.
+
+`def test_init_listening_interface(self):` This test case checks if the init_listening_interface method creates a socket, binds it to the correct port, and starts listening. It uses socket.socketpair() to create a pair of connected sockets to simulate a client-server connection, and replaces the init_listening_interface method with a MagicMock that returns the server-side socket. It then checks if the server-side socket is bound to the correct port and is listening.
+
+`def test_submit_ballot(self):` This test case checks if the SubmitBallot method adds an entry for the current server in the ballot_box. It clears the sockets_dict to prevent sending messages and calls the SubmitBallot method. It then checks if the current server's port is in the ballot_box.
+
+`def test_trigger_election(self):` This test case checks if the TriggerElection method sets election_time to False and clears the ballot_box. It clears the sockets_dict to prevent sending messages and calls the TriggerElection method. It then checks if election_time is False and the ballot_box is empty.
+
+`def test_get_election_winner(self):` This test case checks if the GetElectionWinner method sets election_time to False and updates the server_state for the winning server. It creates a sample ballot_box and sets election_time to True. The time.sleep function is mocked to avoid waiting during the test execution. It then calls the GetElectionWinner method and checks if election_time is False, and the server_state is PRIMARY for the winning server.
 
 ## Description of Chat Server Unit Tests
 
