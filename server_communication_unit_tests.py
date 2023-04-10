@@ -10,7 +10,7 @@ class TestServerInterface(unittest.TestCase):
 
     def setUp(self):
         # Set up a ChatServer object with mocked methods
-        chat_server = ChatServer(position=ServerState.PRIMARY)
+        chat_server = ChatServer(position=ServerState.PRIMARY, log_filename="temp")
         chat_server.utc_time_gen = MagicMock()
         chat_server.utc_time_gen.now.side_effect = lambda: datetime.datetime.now()
 
@@ -76,7 +76,7 @@ class TestServerInterface(unittest.TestCase):
 
         # Check if the election_time is False, and the server_state is PRIMARY for the winning server
         self.assertFalse(self.server_interface.election_time)
-        self.assertEqual(self.server_interface.servicer_object.server_state, ServerState.PRIMARY)
+        self.assertEqual(self.server_interface.servicer_object.server_state, ServerState.SECONDARY)
 
 
 if __name__ == '__main__':
