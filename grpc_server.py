@@ -599,8 +599,9 @@ class ServerInterface:
 
             elif opcode == 8:
                 result = wp.socket_types.ServerElectionBallot(data)
-                self.ballot_box.append(
-                    (result.port, result.value, self.servicer_object.utc_time_gen.now().timestamp()))
+                if result is not None and result.port is not None:
+                    self.ballot_box.append(
+                        (result.port, result.value, self.servicer_object.utc_time_gen.now().timestamp()))
             
             elif opcode == 9:
                 result = wp.socket_types.ServerSendState(data)
