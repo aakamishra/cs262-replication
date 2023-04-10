@@ -13,7 +13,7 @@ import grpc
 import chat_pb2
 import chat_pb2_grpc
 
-ADDRESSES = ["localhost", "localhost", "localhost"]  # "10.250.240.43"
+ADDRESSES = ["10.250.21.56", '10.250.156.238', '10.250.156.238']  # "10.250.240.43"
 PORTS = [50051, 50052, 50053]
 MAX_CHAR_COUNT = 280
 SECONDARY_ERROR_CODE = "Secondary server response"
