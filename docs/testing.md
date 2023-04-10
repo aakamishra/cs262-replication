@@ -46,6 +46,24 @@ The `ListAccounts` function is called twice: first using an instance of `gRPCCha
 
 The `DeleteAccount` function creates four accounts using `gRPCChatServer` and deletes the first account created. It checks if the account was deleted correctly and if an error code is returned when an invalid account is specified for deletion.
 
+## Description of Client Side Tests
+
+Our client side tests tested especially the new functionality on the client-side
+(which wasn't much) to reach out to multiple servers and aggregate multiple
+responses and only use the one from the primary.
+
+Test 1 (test_try_except_RPC_error):
+This test verifies that the try_except_RPC_error function properly catches and handles any grpc.RpcError exceptions thrown by a mocked function. The test creates a mocked function that always raises an grpc.RpcError exception when called. The try_except_RPC_error function is then used to wrap the mocked function, and the wrapped function is called. The test verifies that the wrapped function returns None, as expected.
+
+Test 2 (test_SendRequest_with_RPC_error):
+This test verifies that the SendRequest function properly handles a grpc.RpcError exception thrown by one of the gRPC server stubs. The test creates a mocked gRPC server stub that always raises a grpc.RpcError exception when the CreateAccount method is called. The mocked server stub is then used to create a ClientStub instance, which is configured to use only the mocked server stub. The SendRequest method is then called on the ClientStub instance with the CreateAccount method and a dictionary of parameters. The test verifies that an Exception is raised, with the expected error message.
+
+Test 3 (test_SendRequest_with_One_Primary_Multiple_Secondaries):
+This test verifies that the SendRequest function properly handles a scenario where there is one primary gRPC server and multiple secondary servers. The test creates three mocked server stubs, where the first two stubs always return a MockReply object with the error code SECONDARY_ERROR_CODE when the CreateAccount method is called, and the third stub returns a MockReply object with the error code "" and a val attribute set to 100. A ClientStub instance is then created with these mocked server stubs, and the SendRequest method is called on the ClientStub instance with the CreateAccount method and a dictionary of parameters. The test verifies that the val attribute of the returned MockReply object is equal to 100, as expected.
+
+Test 4 (test_SendRequest_with_Multiple_Primaries):
+This test verifies that the SendRequest function properly handles a scenario where there are multiple primary gRPC servers (erroneous). The test creates two mocked server stubs, where both stubs always return a MockReply object with the error code "" when the CreateAccount method is called. A ClientStub instance is then created with these mocked server stubs, and the SendRequest method is called on the ClientStub instance with the CreateAccount method and a dictionary of parameters. The test verifies that an Exception is raised, with the expected error message of seeing multiple primaries.
+
 ## (Bonus) Running Integration Tests
 
 For grpc integration tests, please run the following command:
