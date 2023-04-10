@@ -27,10 +27,10 @@ ELECTION_CHECK_TIME = 2 * REFRESH_TIME
 ELECTION_ITERS = 100
 
 
-EXTERNAL_SERVER_ADDRS = [('localhost', '50051'),
-                         ('localhost', '50052'), ('localhost', '50053')]
-INTERNAL_SERVER_ADDRS = [('localhost', '50054'),
-                         ('localhost', '50055'), ('localhost', '50056')]
+EXTERNAL_SERVER_ADDRS = [("10.250.21.56", '50051'),
+                         ('0.0.0.0', '50052'), ('0.0.0.0', '50053')]
+INTERNAL_SERVER_ADDRS = [("10.250.21.56", '50054'),
+                         ('0.0.0.0', '50055'), ('0.0.0.0', '50056')]
 
 
 class ServerState(Enum):
@@ -76,27 +76,45 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
     
     def get_state(self):
         # Returns state as a string that can be set by other servers
-        self.state_save_time = time.time()
-        self.prev_commit_hash = hash(self.state_save_time)
-        return json.dumps(
-            {
-             "time": self.state_save_time,
-             "user_inbox": self.user_inbox,
-             "user_metadata_store": self.user_metadata_store, 
-             "token_hub": self.token_hub,
-             "commit_hash": self.prev_commit_hash
-             })
+        with self.metadata_lock:
+            with self.inbox_lock:
+                self.state_save_time = time.time()
+                self.prev_commit_hash = hash(self.state_save_time)
+                return json.dumps(
+                    {
+                    "time": self.state_save_time,
+                    "user_inbox": self.user_inbox,
+                    "user_metadata_store": self.user_metadata_store, 
+                    "token_hub": self.token_hub,
+                    "commit_hash": self.prev_commit_hash
+                    })
 
     def get_state_time_created(self, state):
-        return json.loads(state)["time"]
+        try:
+            tm = json.loads(state)["time"]
+        except:
+            tm = 0 
+            print("json loads is failing!")
+            log_file = open(self.commit_log_path, "a")  # append mode
+            log_file.write(f"Failing state: {state}\n")
+            log_file.close()
+        return tm
     
     def set_state(self, state):
         # Accepts string and sets state
-        state = json.loads(state)
-        self.user_inbox = state["user_inbox"]
-        self.user_metadata_store = state["user_metadata_store"]
-        self.token_hub = state["token_hub"]
-        self.state_save_time = state["time"]
+        with self.metadata_lock:
+            with self.inbox_lock:
+                try:
+                    state = json.loads(state)
+                    self.user_inbox = state["user_inbox"]
+                    self.user_metadata_store = state["user_metadata_store"]
+                    self.token_hub = state["token_hub"]
+                    self.state_save_time = state["time"]
+                except:
+                    print('FAILED TO LOAD STATE')
+                    log_file = open(self.commit_log_path, "a")  # append mode
+                    log_file.write(f"Failing state: {state}\n")
+                    log_file.close()
     
     def write_state(self):
         state = self.get_state()
@@ -115,7 +133,10 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
         self.set_state(state)
     
     def update_state(self, state):
-        if self.state_save_time is None or self.get_state_time_created(state) > self.state_save_time:
+        with self.metadata_lock:
+            with self.inbox_lock:
+                cond = self.state_save_time is None or self.get_state_time_created(state) > self.state_save_time
+        if cond:
             self.set_state(state)
 
     def ValidatePassword(self, password):
@@ -333,12 +354,12 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
 
             # register token in token hub
             self.token_hub[username] = (token, timestamp)
-            self.write_state()
-            return chat_pb2.LoginReply(
-                version=1,
-                error_code="",
-                auth_token=token,
-                fullname=self.user_metadata_store[username][1])
+        self.write_state()
+        return chat_pb2.LoginReply(
+            version=1,
+            error_code="",
+            auth_token=token,
+            fullname=self.user_metadata_store[username][1])
 
     def CreateAccount(self, request, context) -> chat_pb2.AccountCreateReply:
         """
@@ -387,11 +408,11 @@ class ChatServer(chat_pb2_grpc.ChatServerServicer):
             with self.inbox_lock:
                 # create user chat inbox
                 self.user_inbox[username] = []
-            self.write_state()
-            return chat_pb2.AccountCreateReply(version=1,
-                                                error_code="",
-                                                auth_token=token,
-                                                fullname=fullname)
+        self.write_state()
+        return chat_pb2.AccountCreateReply(version=1,
+                                            error_code="",
+                                            auth_token=token,
+                                            fullname=fullname)
 
     def ListAccounts(self, request, context) -> chat_pb2.ListAccountReply:
         """
@@ -508,7 +529,7 @@ class ServerInterface:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # bind to the port number
-        s.bind(('localhost', int(self.port)))
+        s.bind(('0.0.0.0', int(self.port)))
 
         # start listening on port
         s.listen()
@@ -573,7 +594,10 @@ class ServerInterface:
             elif opcode == 9:
                 result = wp.socket_types.ServerSendState(data)
                 # print(result.state)
-                self.servicer_object.update_state(result.state)
+                if result.state is not None:
+                    self.servicer_object.update_state(result.state)
+                else:
+                    print(f"Sending None state: {result}")
 
     def inter_server_communication_thread(self):
         """
@@ -606,6 +630,8 @@ class ServerInterface:
                     s.connect((host, int(port)))
                 except Exception as e:
                     print(e)
+        
+        time.sleep(2 * ELECTION_CHECK_TIME)
 
         if self.servicer_object.state_save_time is not None:
             state_msg = wp.encode.ServerSendState(version=1, state=self.servicer_object.get_state())
