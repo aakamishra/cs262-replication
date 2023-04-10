@@ -636,20 +636,21 @@ class ServerInterface:
                 except Exception as e:
                     print(e)
         
-        time.sleep(2 * ELECTION_CHECK_TIME)
+        # ADD BACK
+        # time.sleep(2 * ELECTION_CHECK_TIME)
 
-        if self.servicer_object.state_save_time is not None:
-            state_msg = wp.encode.ServerSendState(version=1, state=self.servicer_object.get_state())
-        else:
-            state_msg = None
+        # if self.servicer_object.state_save_time is not None:
+        #     state_msg = wp.encode.ServerSendState(version=1, state=self.servicer_object.get_state())
+        # else:
+        #     state_msg = None
         
-        for port in self.sockets_dict.keys():
-            if state_msg is not None:
-                try:
-                    s = self.sockets_dict[port]
-                    s.send(state_msg)
-                except:
-                    pass
+        # for port in self.sockets_dict.keys():
+        #     if state_msg is not None:
+        #         try:
+        #             s = self.sockets_dict[port]
+        #             s.send(state_msg)
+        #         except:
+        #             pass
 
         # Loop indefinitely
         while True:
