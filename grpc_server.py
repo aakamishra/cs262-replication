@@ -639,6 +639,12 @@ class ServerInterface:
                 f"This Server is the new primary: {self.port}",
                 "state: ",
                 self.servicer_object.server_state)
+
+        # label any broken ports
+        for port in self.sockets_dict.keys():
+            if port != primary_winner and self.replica_metadata[
+                    port][0] == f"{ServerState.PRIMARY}":
+                self.replica_metadata[port] = (f"{ServerState.BROKEN}", self.servicer_object.utc_time_gen.now().timestamp())
         self.election_time = False
 
 
