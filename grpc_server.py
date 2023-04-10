@@ -628,15 +628,15 @@ class ServerInterface:
             if port != self.port:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.sockets_dict[port] = s
-                self.replica_metadata[port] = (
-                    None, self.servicer_object.utc_time_gen.now().timestamp())
+                # self.replica_metadata[port] = (
+                #     None, self.servicer_object.utc_time_gen.now().timestamp())
 
                 try:
                     s.connect((host, int(port)))
                 except Exception as e:
                     print(e)
         
-        time.sleep(2 * ELECTION_CHECK_TIME)
+        # time.sleep(2 * ELECTION_CHECK_TIME)
 
         if self.servicer_object.state_save_time is not None:
             state_msg = wp.encode.ServerSendState(version=1, state=self.servicer_object.get_state())
